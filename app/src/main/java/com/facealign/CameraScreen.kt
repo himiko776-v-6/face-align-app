@@ -6,7 +6,6 @@ import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.util.Size
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -16,7 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Size as ComposeSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
@@ -460,7 +459,7 @@ fun FaceGuideOverlay(
         drawRect(
             color = boxColor,
             topLeft = Offset(left, top),
-            size = Size(boxWidth, boxHeight),
+            size = ComposeSize(boxWidth, boxHeight),
             style = Stroke(width = 4f)
         )
         
@@ -500,7 +499,7 @@ fun FaceGuideOverlay(
             drawRect(
                 color = Color.Cyan,
                 topLeft = Offset(faceLeft, faceTop),
-                size = Size(faceWidth, faceHeight),
+                size = ComposeSize(faceWidth, faceHeight),
                 style = Stroke(width = 2f)
             )
         }
