@@ -528,8 +528,8 @@ fun FaceGuideOverlay(
             
             val faceLeft = canvasWidth - faceRect.bottom * scaleX
             val faceRight = canvasWidth - faceRect.top * scaleX
-            val faceTop = (480 - faceRect.right) * scaleY
-            val faceBottom = (480 - faceRect.left) * scaleY
+            val faceTop = (480 - faceRect.right) * scaleY + offsetY
+            val faceBottom = (480 - faceRect.left) * scaleY + offsetY
             
             val faceWidth = faceRight - faceLeft
             val faceHeight = faceBottom - faceTop
