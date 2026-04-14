@@ -21,7 +21,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -54,7 +54,7 @@ fun CameraScreen(
     onRequestPermission: () -> Unit
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleOwner = context as LifecycleOwner
     
     // 状态
     var cameraReady by remember { mutableStateOf(false) }
