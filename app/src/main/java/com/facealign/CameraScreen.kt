@@ -526,11 +526,13 @@ fun FaceGuideOverlay(
             // top = 原始top * scale（原始X最小）
             // bottom = 原始bottom * scale（原始X最大）
             
-            val faceLeft = canvasWidth - faceRect.bottom * scaleX
-            val faceRight = canvasWidth - faceRect.top * scaleX
-            val faceTop = (480 - faceRect.right) * scaleY + offsetY
-            val faceBottom = (480 - faceRect.left) * scaleY + offsetY
-            
+            // faceRect 已被 transformToDisplay 转换，直接缩放即可
+            val scaleX = canvasWidth / 480f
+            val scaleY = canvasHeight / 640f
+            val faceLeft = faceRect!!.left * scaleX
+            val faceRight = faceRect!!.right * scaleX
+            val faceTop = faceRect!!.top * scaleY
+            val faceBottom = faceRect!!.bottom * scaleY
             val faceWidth = faceRight - faceLeft
             val faceHeight = faceBottom - faceTop
             
