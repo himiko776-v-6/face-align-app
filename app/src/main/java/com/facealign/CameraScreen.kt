@@ -509,22 +509,27 @@ fun FaceGuideOverlay(
             val offsetX = (canvasWidth - kotlin.math.ceil(imageHeight * scale)) / 2f
             val offsetY = (canvasHeight - kotlin.math.ceil(imageWidth * scale)) / 2f
             
-            // 坐标转换（参考 GraphicOverlay 的逻辑）
-            // boundingBox 是 ML Kit 返回的原始坐标（基于 640x480）
-            // 270度旋转后需要交换 X/Y 坐标
-            val mappedBox = RectF(
-                faceRect.right * scale + offsetX,   // left = 原始right（交换）
-                faceRect.top * scale + offsetY,     // top
-                faceRect.left * scale + offsetX,    // right = 原始left（交换）
-                faceRect.bottom * scale + offsetY   // bottom
-            )
+            // 270度旋转 + 前置镜像坐标转换
+            // 原始图像：640x480 (宽x高)，ML Kit boundingBox 基于此坐标系
+            // 旋转270度后：480x640 (宽x高)
+            // 
+            // 270度逆时针旋转：新X = 原始Y，新Y = 原始X
+            // 前置摄像头水平镜像：镜像X = canvasWidth - X
+            // 
+            // 组合变换（镜像+旋转）：
+            // 镜像X = canvasWidth - 原始Y * scale
+            // 镜像Y = 原始X * scale
+            //
+            // 矩形边界转换：
+            // left = canvasWidth - 原始right * scale（原始Y最大 → 镜像X最小）
+            // right = canvasWidth - 原始left * scale（原始Y最小 → 镜像X最大）
+            // top = 原始top * scale（原始X最小）
+            // bottom = 原始bottom * scale（原始X最大）
             
-            // 前置摄像头镜像：基于中心点翻转
-            val centerX = canvasWidth / 2f
-            val faceLeft = centerX + (centerX - mappedBox.left)
-            val faceRight = centerX - (mappedBox.right - centerX)
-            val faceTop = mappedBox.top
-            val faceBottom = mappedBox.bottom
+            val faceLeft = canvasWidth - faceRect.right * scaleX
+            val faceRight = canvasWidth - faceRect.left * scaleX
+            val faceTop = faceRect.top * scaleY
+            val faceBottom = faceRect.bottom * scaleY
             
             val faceWidth = faceRight - faceLeft
             val faceHeight = faceBottom - faceTop
