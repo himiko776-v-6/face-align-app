@@ -493,37 +493,8 @@ fun FaceGuideOverlay(
         drawLine(cornerColor, Offset(left + boxWidth, top + boxHeight), Offset(left + boxWidth - cornerLength, top + boxHeight), strokeWidth)
         drawLine(cornerColor, Offset(left + boxWidth, top + boxHeight), Offset(left + boxWidth, top + boxHeight - cornerLength), strokeWidth)
         
-        // 绘制人脸检测框（如果有）
-        if (faceRect != null && alignState != AlignState.NO_FACE) {
-            // 270° 旋转 + 前置摄像头镜像的正确转换
-            // 参考 w3tutorials.net 公式：(x,y) → (imageHeight-y-height, x)
-            // 前置镜像：mirrorX = canvasWidth - X
-            
-            // faceRect 是原始 boundingBox，来自 640x480 横向图像
-            // rect.left/right = 原始 X 坐标 (0-640)
-            // rect.top/bottom = 原始 Y 坐标 (0-480)
-            
-            // 270° 旋转后：原始 X → 显示 Y，原始 Y → 显示 X
-            // 前置摄像头镜像：显示 X 需要翻转
-            
-            val scaleX = canvasWidth / 480f   // 旋转后宽度来自原始高度
-            val scaleY = canvasHeight / 640f  // 旋转后高度来自原始宽度
-            
-            // 270° + 镜像：displayX = 480 - imageY, displayY = imageX
-            val displayLeft = (480 - faceRect!!.bottom) * scaleX   // 原始 Y 最大 → 显示 X 最小（镜像后）
-            val displayRight = (480 - faceRect!!.top) * scaleX     // 原始 Y 最小 → 显示 X 最大（镜像后）
-            val displayTop = faceRect!!.left * scaleY              // 原始 X 最小 → 显示 Y 最小
-            val displayBottom = faceRect!!.right * scaleY          // 原始 X 最大 → 显示 Y 最大
-            
-            val faceWidth = displayRight - displayLeft
-            val faceHeight = displayBottom - displayTop
-            
-            drawRect(
-                color = Color.Cyan,
-                topLeft = Offset(displayLeft, displayTop),
-                size = ComposeSize(faceWidth, faceHeight),
-                style = Stroke(width = 2f)
-            )
-        }
+        // 绘制可调整的截图区域框
+        // 用户可以自定义调整这个框的大小和位置
+        // 截图时只截框内的画面，压缩后传给 YOLO/Qwen 分析
     }
 }
