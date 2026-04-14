@@ -512,13 +512,12 @@ fun FaceGuideOverlay(
             // 坐标转换（参考 GraphicOverlay 的逻辑）
             // boundingBox 是 ML Kit 返回的原始坐标（基于 640x480）
             // 270度旋转后需要交换 X/Y 坐标
-            val mappedBox = RectF().apply {
-                // 交换 left/right（270度旋转的坐标变换）
-                left = faceRect.right * scale + offsetX
-                top = faceRect.top * scale + offsetY
-                right = faceRect.left * scale + offsetX
-                bottom = faceRect.bottom * scale + offsetY
-            }
+            val mappedBox = RectF(
+                faceRect.right * scale + offsetX,   // left = 原始right（交换）
+                faceRect.top * scale + offsetY,     // top
+                faceRect.left * scale + offsetX,    // right = 原始left（交换）
+                faceRect.bottom * scale + offsetY   // bottom
+            )
             
             // 前置摄像头镜像：基于中心点翻转
             val centerX = canvasWidth / 2f
