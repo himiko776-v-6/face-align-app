@@ -11,6 +11,8 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,9 +21,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size as ComposeSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlin.math.sqrt
 import androidx.lifecycle.LifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
@@ -66,6 +70,10 @@ fun CameraScreen(
     var alignState by remember { mutableStateOf(AlignState.NO_FACE) }
     var capturedPhoto by remember { mutableStateOf<String?>(null) }
     var faceRect by remember { mutableStateOf<Rect?>(null) }
+    
+    // 截图框位置和大小（可拖动缩放）
+    var captureBoxOffset by remember { mutableStateOf(Offset.Zero) }
+    var captureBoxScale by remember { mutableStateOf(1f) }
     
     // 主线程 Handler，用于更新 UI 状态
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
@@ -120,8 +128,14 @@ fun CameraScreen(
                     modifier = Modifier.fillMaxSize()
                 )
                 
-                // 引导框叠加层
-                FaceGuideOverlay(alignState = alignState)
+                // 引导框叠加层（可拖动缩放）
+                FaceGuideOverlay(
+                    alignState = alignState,
+                    boxOffset = captureBoxOffset,
+                    boxScale = captureBoxScale,
+                    onOffsetChange = { captureBoxOffset = it },
+                    onScaleChange = { captureBoxScale = it }
+                )
             }
             
             // 引导文字
@@ -407,54 +421,146 @@ private fun capturePhoto(
 }
 
 @Composable
-fun FaceGuideOverlay(alignState: AlignState) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val canvasWidth = size.width
-        val canvasHeight = size.height
-        
-        // 目标框：屏幕中央，宽高比为 3:4
-        val boxWidth = canvasWidth * 0.6f
-        val boxHeight = boxWidth * 1.33f
-        val left = (canvasWidth - boxWidth) / 2
-        val top = (canvasHeight - boxHeight) / 2
-        
-        // 目标框颜色根据状态变化
-        val boxColor = when (alignState) {
-            AlignState.ALIGNED -> Color(0xFF4CAF50)
-            else -> Color.Yellow
+fun FaceGuideOverlay(
+    alignState: AlignState,
+    boxOffset: Offset,
+    boxScale: Float,
+    onOffsetChange: (Offset) -> Unit,
+    onScaleChange: (Float) -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 使用 BoxWithConstraints 来获取尺寸
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val canvasWidth = constraints.maxWidth.toFloat()
+            val canvasHeight = constraints.maxHeight.toFloat()
+            
+            // 基础框尺寸
+            val baseWidth = canvasWidth * 0.6f
+            val baseHeight = baseWidth * 1.33f
+            
+            // 应用缩放和偏移
+            val boxWidth = baseWidth * boxScale
+            val boxHeight = baseHeight * boxScale
+            
+            // 计算框位置（居中 + 偏移）
+            val baseLeft = (canvasWidth - baseWidth) / 2
+            val baseTop = (canvasHeight - baseHeight) / 2
+            val left = baseLeft + boxOffset.x - (boxWidth - baseWidth) / 2
+            val top = baseTop + boxOffset.y - (boxHeight - baseHeight) / 2
+            
+            // 目标框颜色根据状态变化
+            val boxColor = when (alignState) {
+                AlignState.ALIGNED -> Color(0xFF4CAF50)
+                else -> Color.Yellow
+            }
+            
+            // 角落触摸区域大小
+            val cornerTouchSizeDp = 48.dp
+            val cornerTouchSizePx = cornerTouchSizeDp.value
+            
+            // 主画布 - 绘制框和角落控制点
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            // 拖动整个框
+                            onOffsetChange(boxOffset + dragAmount)
+                        }
+                    }
+            ) {
+                // 绘制主框
+                drawRect(
+                    color = boxColor,
+                    topLeft = Offset(left, top),
+                    size = ComposeSize(boxWidth, boxHeight),
+                    style = Stroke(width = 4f)
+                )
+                
+                // 绘制四个角标记（表示可调整）
+                val cornerLength = 30f
+                val strokeWidth = 4f
+                val cornerColor = Color.White
+                
+                // 左上角
+                drawLine(cornerColor, Offset(left, top), Offset(left + cornerLength, top), strokeWidth)
+                drawLine(cornerColor, Offset(left, top), Offset(left, top + cornerLength), strokeWidth)
+                
+                // 右上角
+                drawLine(cornerColor, Offset(left + boxWidth, top), Offset(left + boxWidth - cornerLength, top), strokeWidth)
+                drawLine(cornerColor, Offset(left + boxWidth, top), Offset(left + boxWidth, top + cornerLength), strokeWidth)
+                
+                // 左下角
+                drawLine(cornerColor, Offset(left, top + boxHeight), Offset(left + cornerLength, top + boxHeight), strokeWidth)
+                drawLine(cornerColor, Offset(left, top + boxHeight), Offset(left, top + boxHeight - cornerLength), strokeWidth)
+                
+                // 右下角
+                drawLine(cornerColor, Offset(left + boxWidth, top + boxHeight), Offset(left + boxWidth - cornerLength, top + boxHeight), strokeWidth)
+                drawLine(cornerColor, Offset(left + boxWidth, top + boxHeight), Offset(left + boxWidth, top + boxHeight - cornerLength), strokeWidth)
+                
+                // 绘制四个缩放控制点（圆圈）
+                val handleRadius = 12f
+                
+                val corners = listOf(
+                    Offset(left, top),
+                    Offset(left + boxWidth, top),
+                    Offset(left, top + boxHeight),
+                    Offset(left + boxWidth, top + boxHeight)
+                )
+                
+                corners.forEach { corner ->
+                    drawCircle(
+                        color = Color.White,
+                        radius = handleRadius,
+                        center = corner,
+                        style = Stroke(width = 3f)
+                    )
+                }
+            }
+            
+            // 左上角缩放控制区
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = (left - 24).toInt(),
+                            y = (top - 24).toInt()
+                        )
+                    }
+                    .size(cornerTouchSizeDp)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            // 左上角拖动：缩小框（向左上拖变小）
+                            val scaleDelta = -dragAmount.x / 200f
+                            val newScale = (boxScale + scaleDelta).coerceIn(0.3f, 2f)
+                            onScaleChange(newScale)
+                            onOffsetChange(boxOffset + Offset(dragAmount.x * 0.5f, dragAmount.y * 0.5f))
+                        }
+                    }
+            )
+            
+            // 右下角缩放控制区
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = (left + boxWidth - 24).toInt(),
+                            y = (top + boxHeight - 24).toInt()
+                        )
+                    }
+                    .size(cornerTouchSizeDp)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            // 右下角拖动：放大框（向右下拖变大）
+                            val scaleDelta = dragAmount.x / 200f
+                            val newScale = (boxScale + scaleDelta).coerceIn(0.3f, 2f)
+                            onScaleChange(newScale)
+                        }
+                    }
+            )
         }
-        
-        // 绘制目标框
-        drawRect(
-            color = boxColor,
-            topLeft = Offset(left, top),
-            size = ComposeSize(boxWidth, boxHeight),
-            style = Stroke(width = 4f)
-        )
-        
-        // 绘制四个角标记
-        val cornerLength = 40f
-        val strokeWidth = 4f
-        val cornerColor = Color.White
-        
-        // 左上角
-        drawLine(cornerColor, Offset(left, top), Offset(left + cornerLength, top), strokeWidth)
-        drawLine(cornerColor, Offset(left, top), Offset(left, top + cornerLength), strokeWidth)
-        
-        // 右上角
-        drawLine(cornerColor, Offset(left + boxWidth, top), Offset(left + boxWidth - cornerLength, top), strokeWidth)
-        drawLine(cornerColor, Offset(left + boxWidth, top), Offset(left + boxWidth, top + cornerLength), strokeWidth)
-        
-        // 左下角
-        drawLine(cornerColor, Offset(left, top + boxHeight), Offset(left + cornerLength, top + boxHeight), strokeWidth)
-        drawLine(cornerColor, Offset(left, top + boxHeight), Offset(left, top + boxHeight - cornerLength), strokeWidth)
-        
-        // 右下角
-        drawLine(cornerColor, Offset(left + boxWidth, top + boxHeight), Offset(left + boxWidth - cornerLength, top + boxHeight), strokeWidth)
-        drawLine(cornerColor, Offset(left + boxWidth, top + boxHeight), Offset(left + boxWidth, top + boxHeight - cornerLength), strokeWidth)
-        
-        // 绘制可调整的截图区域框
-        // 用户可以自定义调整这个框的大小和位置
-        // 截图时只截框内的画面，压缩后传给 YOLO/Qwen 分析
     }
 }
