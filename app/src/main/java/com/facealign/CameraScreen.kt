@@ -262,11 +262,9 @@ private fun processFrame(
                 // 计算对齐状态（使用旋转后的尺寸）
                 val state = calculateAlignment(faceBounds, actualWidth, actualHeight, rotation)
                 
-                // 转换坐标到显示坐标系
-                val displayRect = transformToDisplay(faceBounds, imageProxy.width, imageProxy.height, rotation)
-                
+                // 传递原始 boundingBox，坐标转换在 FaceGuideOverlay 中完成
                 mainHandler.post {
-                    onResult(displayRect, state)
+                    onResult(faceBounds, state)
                 }
             }
         }
@@ -497,20 +495,32 @@ fun FaceGuideOverlay(
         
         // 绘制人脸检测框（如果有）
         if (faceRect != null && alignState != AlignState.NO_FACE) {
-            // faceRect 已被 transformToDisplay 转换，直接缩放到 Canvas 尺寸
-            // transformToDisplay 输出坐标系：480x640 (旋转后竖屏尺寸)
-            val scaleX = canvasWidth / 480f
-            val scaleY = canvasHeight / 640f
-            val faceLeft = faceRect!!.left * scaleX
-            val faceRight = faceRect!!.right * scaleX
-            val faceTop = faceRect!!.top * scaleY
-            val faceBottom = faceRect!!.bottom * scaleY
-            val faceWidth = faceRight - faceLeft
-            val faceHeight = faceBottom - faceTop
+            // 270° 旋转 + 前置摄像头镜像的正确转换
+            // 参考 w3tutorials.net 公式：(x,y) → (imageHeight-y-height, x)
+            // 前置镜像：mirrorX = canvasWidth - X
+            
+            // faceRect 是原始 boundingBox，来自 640x480 横向图像
+            // rect.left/right = 原始 X 坐标 (0-640)
+            // rect.top/bottom = 原始 Y 坐标 (0-480)
+            
+            // 270° 旋转后：原始 X → 显示 Y，原始 Y → 显示 X
+            // 前置摄像头镜像：显示 X 需要翻转
+            
+            val scaleX = canvasWidth / 480f   // 旋转后宽度来自原始高度
+            val scaleY = canvasHeight / 640f  // 旋转后高度来自原始宽度
+            
+            // 270° + 镜像：displayX = 480 - imageY, displayY = imageX
+            val displayLeft = (480 - faceRect!!.bottom) * scaleX   // 原始 Y 最大 → 显示 X 最小（镜像后）
+            val displayRight = (480 - faceRect!!.top) * scaleX     // 原始 Y 最小 → 显示 X 最大（镜像后）
+            val displayTop = faceRect!!.left * scaleY              // 原始 X 最小 → 显示 Y 最小
+            val displayBottom = faceRect!!.right * scaleY          // 原始 X 最大 → 显示 Y 最大
+            
+            val faceWidth = displayRight - displayLeft
+            val faceHeight = displayBottom - displayTop
             
             drawRect(
                 color = Color.Cyan,
-                topLeft = Offset(faceLeft, faceTop),
+                topLeft = Offset(displayLeft, displayTop),
                 size = ComposeSize(faceWidth, faceHeight),
                 style = Stroke(width = 2f)
             )
