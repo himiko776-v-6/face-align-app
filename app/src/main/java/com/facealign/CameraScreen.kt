@@ -2,6 +2,9 @@ package com.facealign
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.util.Size
 import androidx.camera.core.*
@@ -59,12 +62,14 @@ fun CameraScreen(
     var cameraError by remember { mutableStateOf<String?>(null) }
     var alignState by remember { mutableStateOf(AlignState.NO_FACE) }
     var capturedPhoto by remember { mutableStateOf<String?>(null) }
-    var faceRect by remember { mutableStateOf<android.graphics.Rect?>(null) }
+    var faceRect by remember { mutableStateOf<Rect?>(null) }
+    
+    // 主线程 Handler，用于更新 UI 状态
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
     
     // 相机组件
     val previewView = remember { PreviewView(context) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
-    var imageAnalyzer by remember { mutableStateOf<ImageAnalysis?>(null) }
     val cameraExecutor: ExecutorService = remember { Executors.newSingleThreadExecutor() }
     
     // ML Kit 人脸检测器
@@ -160,13 +165,13 @@ fun CameraScreen(
                     .build()
                 
                 // 创建图像分析
-                imageAnalyzer = ImageAnalysis.Builder()
+                val imageAnalysis = ImageAnalysis.Builder()
                     .setTargetResolution(Size(640, 480))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                     .also { analysis ->
                         analysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                            processFrame(imageProxy, faceDetector) { rect, state ->
+                            processFrame(imageProxy, faceDetector, mainHandler) { rect, state ->
                                 faceRect = rect
                                 alignState = state
                                 
@@ -190,7 +195,7 @@ fun CameraScreen(
                             CameraSelector.DEFAULT_FRONT_CAMERA,
                             preview,
                             imageCapture,
-                            imageAnalyzer
+                            imageAnalysis
                         )
                         Log.d(TAG, "Front camera bound with analysis")
                     } catch (e: Exception) {
@@ -201,7 +206,7 @@ fun CameraScreen(
                             CameraSelector.DEFAULT_BACK_CAMERA,
                             preview,
                             imageCapture,
-                            imageAnalyzer
+                            imageAnalysis
                         )
                         Log.d(TAG, "Back camera bound with analysis")
                     }
@@ -224,11 +229,12 @@ fun CameraScreen(
     }
 }
 
-// 处理每一帧
+// 处理每一帧（带主线程回调）
 private fun processFrame(
     imageProxy: ImageProxy,
     faceDetector: com.google.mlkit.vision.face.FaceDetector,
-    onResult: (android.graphics.Rect?, AlignState) -> Unit
+    mainHandler: Handler,
+    onResult: (Rect?, AlignState) -> Unit
 ) {
     val mediaImage = imageProxy.image
     if (mediaImage == null) {
@@ -239,43 +245,86 @@ private fun processFrame(
     val rotation = imageProxy.imageInfo.rotationDegrees
     val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
     
+    // 计算旋转后的实际图像尺寸
+    val actualWidth = if (rotation == 90 || rotation == 270) imageProxy.height else imageProxy.width
+    val actualHeight = if (rotation == 90 || rotation == 270) imageProxy.width else imageProxy.height
+    
     faceDetector.process(inputImage)
         .addOnSuccessListener { faces ->
             if (faces.isEmpty()) {
-                onResult(null, AlignState.NO_FACE)
+                mainHandler.post {
+                    onResult(null, AlignState.NO_FACE)
+                }
             } else {
                 val face = faces[0]
                 val faceBounds = face.boundingBox
                 
-                // 计算对齐状态
-                val state = calculateAlignment(faceBounds, imageProxy.width, imageProxy.height, rotation)
-                onResult(faceBounds, state)
+                // 计算对齐状态（使用旋转后的尺寸）
+                val state = calculateAlignment(faceBounds, actualWidth, actualHeight, rotation)
+                
+                // 转换坐标到显示坐标系
+                val displayRect = transformToDisplay(faceBounds, imageProxy.width, imageProxy.height, rotation)
+                
+                mainHandler.post {
+                    onResult(displayRect, state)
+                }
             }
         }
         .addOnFailureListener { e ->
             Log.e(TAG, "Face detection failed", e)
-            onResult(null, AlignState.NO_FACE)
+            mainHandler.post {
+                onResult(null, AlignState.NO_FACE)
+            }
         }
         .addOnCompleteListener {
             imageProxy.close()
         }
 }
 
+// 转换坐标到显示坐标系
+private fun transformToDisplay(
+    rect: Rect,
+    imageWidth: Int,
+    imageHeight: Int,
+    rotation: Int
+): Rect {
+    return when (rotation) {
+        270 -> Rect(
+            imageHeight - rect.bottom,  // 前置摄像头镜像
+            rect.left,
+            imageHeight - rect.top,
+            rect.right
+        )
+        90 -> Rect(
+            rect.top,
+            imageWidth - rect.right,
+            rect.bottom,
+            imageWidth - rect.left
+        )
+        180 -> Rect(
+            imageWidth - rect.right,
+            imageHeight - rect.bottom,
+            imageWidth - rect.left,
+            imageHeight - rect.top
+        )
+        else -> rect
+    }
+}
+
 // 计算人脸是否对齐
 private fun calculateAlignment(
-    faceBounds: android.graphics.Rect,
+    faceBounds: Rect,
     imageWidth: Int,
     imageHeight: Int,
     rotation: Int
 ): AlignState {
-    // 目标框区域（画面中央，比例与引导框一致）
-    // 前置摄像头需要镜像
+    // 目标框区域（画面中央）
     val targetLeft = imageWidth * 0.2f
     val targetRight = imageWidth * 0.8f
     val targetTop = imageHeight * 0.15f
     val targetBottom = imageHeight * 0.85f
     
-    // 前置摄像头镜像处理（rotation 270 时）
+    // 转换人脸坐标（考虑旋转）
     val faceLeft: Float
     val faceRight: Float
     val faceTop: Float
@@ -287,6 +336,11 @@ private fun calculateAlignment(
         faceRight = imageWidth - faceBounds.left.toFloat()
         faceTop = faceBounds.top.toFloat()
         faceBottom = faceBounds.bottom.toFloat()
+    } else if (rotation == 90) {
+        faceLeft = faceBounds.top.toFloat()
+        faceRight = faceBounds.bottom.toFloat()
+        faceTop = imageHeight - faceBounds.right.toFloat()
+        faceBottom = imageHeight - faceBounds.left.toFloat()
     } else {
         faceLeft = faceBounds.left.toFloat()
         faceRight = faceBounds.right.toFloat()
@@ -305,9 +359,9 @@ private fun calculateAlignment(
     val targetHeight = targetBottom - targetTop
     
     // 容差阈值
-    val positionTolerance = targetWidth * 0.1f  // 位置容差 10%
-    val sizeToleranceLow = 0.7f   // 大小下限 70%
-    val sizeToleranceHigh = 1.3f  // 大小上限 130%
+    val positionTolerance = targetWidth * 0.15f
+    val sizeToleranceLow = 0.6f
+    val sizeToleranceHigh = 1.4f
     
     // 检查人脸大小
     val widthRatio = faceWidth / targetWidth
@@ -321,24 +375,33 @@ private fun calculateAlignment(
         return AlignState.TOO_CLOSE
     }
     
-    // 检查位置
+    // 检查位置偏移
     val offsetX = faceCenterX - targetCenterX
     val offsetY = faceCenterY - targetCenterY
     
-    // 优先检查左右
-    if (offsetX > positionTolerance) {
-        return AlignState.MOVE_RIGHT  // 人脸在右边，需要向右移（画面向左）
-    }
-    if (offsetX < -positionTolerance) {
-        return AlignState.MOVE_LEFT   // 人脸在左边，需要向左移（画面向右）
+    // 优先检查左右（前置摄像头方向相反）
+    if (rotation == 270) {
+        if (offsetX > positionTolerance) {
+            return AlignState.MOVE_LEFT
+        }
+        if (offsetX < -positionTolerance) {
+            return AlignState.MOVE_RIGHT
+        }
+    } else {
+        if (offsetX > positionTolerance) {
+            return AlignState.MOVE_RIGHT
+        }
+        if (offsetX < -positionTolerance) {
+            return AlignState.MOVE_LEFT
+        }
     }
     
     // 检查上下
     if (offsetY > positionTolerance) {
-        return AlignState.MOVE_DOWN   // 人脸在下边
+        return AlignState.MOVE_DOWN
     }
     if (offsetY < -positionTolerance) {
-        return AlignState.MOVE_UP     // 人脸在上边
+        return AlignState.MOVE_UP
     }
     
     return AlignState.ALIGNED
@@ -375,7 +438,7 @@ private fun capturePhoto(
 @Composable
 fun FaceGuideOverlay(
     alignState: AlignState,
-    faceRect: android.graphics.Rect?
+    faceRect: Rect?
 ) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val canvasWidth = size.width
@@ -389,7 +452,7 @@ fun FaceGuideOverlay(
         
         // 目标框颜色根据状态变化
         val boxColor = when (alignState) {
-            AlignState.ALIGNED -> Color(0xFF4CAF50)  // 绿色
+            AlignState.ALIGNED -> Color(0xFF4CAF50)
             else -> Color.Yellow
         }
         
@@ -424,13 +487,12 @@ fun FaceGuideOverlay(
         
         // 绘制人脸检测框（如果有）
         if (faceRect != null && alignState != AlignState.NO_FACE) {
-            // 需要将图像坐标转换为屏幕坐标
-            // 这里简化处理，后续可能需要根据实际预览调整
-            val scaleX = canvasWidth / 480f  // 假设分析分辨率 640x480
-            val scaleY = canvasHeight / 640f
+            // ImageAnalysis 分辨率 640x480 (宽x高)
+            // 旋转270后实际显示尺寸：480x640 (宽x高)
+            val scaleX = canvasWidth / 480f   // 旋转后宽度是480
+            val scaleY = canvasHeight / 640f  // 旋转后高度是640
             
-            // 前置摄像头镜像
-            val faceLeft = canvasWidth - faceRect.right * scaleX
+            val faceLeft = faceRect.left * scaleX
             val faceTop = faceRect.top * scaleY
             val faceWidth = faceRect.width() * scaleX
             val faceHeight = faceRect.height() * scaleY
