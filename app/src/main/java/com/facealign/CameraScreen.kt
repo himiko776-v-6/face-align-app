@@ -49,6 +49,9 @@ enum class AlignState {
     ALIGNED         // 对齐成功
 }
 
+// 拍照防抖标志
+private var isCapturing = false
+
 @Composable
 fun CameraScreen(
     hasPermission: Boolean,
@@ -118,10 +121,7 @@ fun CameraScreen(
                 )
                 
                 // 引导框叠加层
-                FaceGuideOverlay(
-                    alignState = alignState,
-                    faceRect = faceRect
-                )
+                FaceGuideOverlay(alignState = alignState)
             }
             
             // 引导文字
@@ -175,10 +175,12 @@ fun CameraScreen(
                                 faceRect = rect
                                 alignState = state
                                 
-                                // 对齐成功，自动拍照
-                                if (state == AlignState.ALIGNED && imageCapture != null && capturedPhoto == null) {
+                                // 对齐成功，自动拍照（防抖）
+                                if (state == AlignState.ALIGNED && imageCapture != null && capturedPhoto == null && !isCapturing) {
+                                    isCapturing = true
                                     capturePhoto(imageCapture!!, context, cameraExecutor) { path ->
                                         capturedPhoto = path
+                                        isCapturing = false
                                         Log.d(TAG, "Photo saved: $path")
                                     }
                                 }
@@ -275,48 +277,9 @@ private fun processFrame(
             }
         }
         .addOnCompleteListener {
+            // 确保只在这里关闭 ImageProxy，避免重复关闭
             imageProxy.close()
         }
-}
-
-// 转换坐标到显示坐标系
-private fun transformToDisplay(
-    rect: Rect,
-    imageWidth: Int,
-    imageHeight: Int,
-    rotation: Int
-): Rect {
-    // 对于前置摄像头 270° 旋转（竖屏拍摄）：
-    // 参考 GraphicOverlay.kt 的 calculateRect 方法：
-    // 1. 旋转映射：left = boundingBox.right（反转），right = boundingBox.left
-    // 2. 前置摄像头镜像：水平翻转 X 坐标
-    //
-    // 简化后的公式（270度 + 前置镜像）：
-    // displayX = imageHeight - imageY（反转 Y）
-    // displayY = imageX
-    //
-    // 即：left = imageHeight - bottom, right = imageHeight - top, top = left, bottom = right
-    return when (rotation) {
-        270 -> Rect(
-            imageHeight - rect.bottom,  // left = 480 - bottom（Y 反转 + 镜像）
-            rect.left,                  // top = left（X → Y）
-            imageHeight - rect.top,     // right = 480 - top（Y 反转 + 镜像）
-            rect.right                  // bottom = right（X → Y）
-        )
-        90 -> Rect(
-            rect.top,
-            imageWidth - rect.right,
-            rect.bottom,
-            imageWidth - rect.left
-        )
-        180 -> Rect(
-            imageWidth - rect.right,
-            imageHeight - rect.bottom,
-            imageWidth - rect.left,
-            imageHeight - rect.top
-        )
-        else -> rect
-    }
 }
 
 // 计算人脸是否对齐
@@ -444,10 +407,7 @@ private fun capturePhoto(
 }
 
 @Composable
-fun FaceGuideOverlay(
-    alignState: AlignState,
-    faceRect: Rect?
-) {
+fun FaceGuideOverlay(alignState: AlignState) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val canvasWidth = size.width
         val canvasHeight = size.height
