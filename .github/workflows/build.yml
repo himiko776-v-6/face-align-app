@@ -33,7 +33,7 @@ jobs:
         echo "=== Running Gradle ==="
     
     - name: Build APK
-      run: ./gradlew :app:assembleDebug --no-daemon --no-build-cache --info
+      run: ./gradlew :app:assembleDebug --no-daemon --no-build-cache --stacktrace
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
