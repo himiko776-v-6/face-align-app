@@ -3,6 +3,7 @@ package com.facealign
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Rect
+import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -488,21 +489,43 @@ fun FaceGuideOverlay(
         if (faceRect != null && alignState != AlignState.NO_FACE) {
             // ImageAnalysis 分辨率 640x480 (宽x高)
             // 旋转270度后实际显示尺寸：480x640 (宽x高)
-            // 前置摄像头270度旋转坐标转换：
-            // 新X = 480 - 原始Y（原始Y小 → 新X大）
-            // 新Y = 640 - 原始X（原始X小 → 新Y大）
-            val scaleX = canvasWidth / 480f   // 旋转后宽度是480
-            val scaleY = canvasHeight / 640f  // 旋转后高度是640
+            // 
+            // 参考方案：使用统一缩放比例 + 居中偏移 + 前置摄像头镜像
+            // 竖屏模式下：
+            // - scaleX = canvasWidth / imageHeight (因为旋转后宽度来自原图高度)
+            // - scaleY = canvasHeight / imageWidth (因为旋转后高度来自原图宽度)
+            // - scale = max(scaleX, scaleY) 保证画面完全覆盖
+            // - 计算偏移量居中显示
             
-            // 转换矩形边界
-            // 新left = 480 - 原始bottom（原始Y最大值 → 新X最小值）
-            // 新right = 480 - 原始top（原始Y最小值 → 新X最大值）
-            // 新top = 原始left（原始X最小值 → 新Y最小值）
-            // 新bottom = 原始right（原始X最大值 → 新Y最大值）
-            val faceLeft = (480 - faceRect.bottom) * scaleX
-            val faceTop = faceRect.left * scaleY
-            val faceRight = (480 - faceRect.top) * scaleX
-            val faceBottom = faceRect.right * scaleY
+            val imageWidth = 640f  // 原始图像宽度
+            val imageHeight = 480f  // 原始图像高度
+            
+            // 竖屏模式：旋转后宽度来自原图高度，高度来自原图宽度
+            val scaleX = canvasWidth / imageHeight   // 旋转后宽度480对应canvasWidth
+            val scaleY = canvasHeight / imageWidth   // 旋转后高度640对应canvasHeight
+            val scale = maxOf(scaleX, scaleY)        // 统一缩放比例
+            
+            // 居中偏移量
+            val offsetX = (canvasWidth - kotlin.math.ceil(imageHeight * scale)) / 2f
+            val offsetY = (canvasHeight - kotlin.math.ceil(imageWidth * scale)) / 2f
+            
+            // 坐标转换（参考 GraphicOverlay 的逻辑）
+            // boundingBox 是 ML Kit 返回的原始坐标（基于 640x480）
+            // 270度旋转后需要交换 X/Y 坐标
+            val mappedBox = RectF().apply {
+                // 交换 left/right（270度旋转的坐标变换）
+                left = faceRect.right * scale + offsetX
+                top = faceRect.top * scale + offsetY
+                right = faceRect.left * scale + offsetX
+                bottom = faceRect.bottom * scale + offsetY
+            }
+            
+            // 前置摄像头镜像：基于中心点翻转
+            val centerX = canvasWidth / 2f
+            val faceLeft = centerX + (centerX - mappedBox.left)
+            val faceRight = centerX - (mappedBox.right - centerX)
+            val faceTop = mappedBox.top
+            val faceBottom = mappedBox.bottom
             
             val faceWidth = faceRight - faceLeft
             val faceHeight = faceBottom - faceTop
