@@ -1,4 +1,4 @@
-name: Debug Build
+name: Build APK
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  debug:
+  build:
     runs-on: ubuntu-latest
     
     steps:
@@ -21,14 +21,22 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
     
+    - name: Clear Gradle cache
+      run: rm -rf ~/.gradle
+    
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
     
-    - name: List Gradle tasks
-      run: ./gradlew tasks --no-daemon
+    - name: Debug Gradle wrapper
+      run: |
+        echo "=== Checking gradle-wrapper.jar ==="
+        unzip -l gradle/wrapper/gradle-wrapper.jar
+        echo "=== Checking settings.gradle.kts ==="
+        cat settings.gradle.kts
+        echo "=== Running Gradle ==="
     
     - name: Build APK
-      run: ./gradlew :app:assembleDebug --no-daemon
+      run: ./gradlew :app:assembleDebug --no-daemon --no-build-cache --info
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
