@@ -487,14 +487,25 @@ fun FaceGuideOverlay(
         // 绘制人脸检测框（如果有）
         if (faceRect != null && alignState != AlignState.NO_FACE) {
             // ImageAnalysis 分辨率 640x480 (宽x高)
-            // 旋转270后实际显示尺寸：480x640 (宽x高)
+            // 旋转270度后实际显示尺寸：480x640 (宽x高)
+            // 前置摄像头270度旋转坐标转换：
+            // 新X = 480 - 原始Y（原始Y小 → 新X大）
+            // 新Y = 640 - 原始X（原始X小 → 新Y大）
             val scaleX = canvasWidth / 480f   // 旋转后宽度是480
             val scaleY = canvasHeight / 640f  // 旋转后高度是640
             
-            val faceLeft = faceRect.left * scaleX
-            val faceTop = faceRect.top * scaleY
-            val faceWidth = faceRect.width() * scaleX
-            val faceHeight = faceRect.height() * scaleY
+            // 转换矩形边界
+            // 新left = 480 - 原始bottom（原始Y最大值 → 新X最小值）
+            // 新right = 480 - 原始top（原始Y最小值 → 新X最大值）
+            // 新top = 原始left（原始X最小值 → 新Y最小值）
+            // 新bottom = 原始right（原始X最大值 → 新Y最大值）
+            val faceLeft = (480 - faceRect.bottom) * scaleX
+            val faceTop = faceRect.left * scaleY
+            val faceRight = (480 - faceRect.top) * scaleX
+            val faceBottom = faceRect.right * scaleY
+            
+            val faceWidth = faceRight - faceLeft
+            val faceHeight = faceBottom - faceTop
             
             drawRect(
                 color = Color.Cyan,
