@@ -487,46 +487,8 @@ fun FaceGuideOverlay(
         
         // 绘制人脸检测框（如果有）
         if (faceRect != null && alignState != AlignState.NO_FACE) {
-            // ImageAnalysis 分辨率 640x480 (宽x高)
-            // 旋转270度后实际显示尺寸：480x640 (宽x高)
-            // 
-            // 参考方案：使用统一缩放比例 + 居中偏移 + 前置摄像头镜像
-            // 竖屏模式下：
-            // - scaleX = canvasWidth / imageHeight (因为旋转后宽度来自原图高度)
-            // - scaleY = canvasHeight / imageWidth (因为旋转后高度来自原图宽度)
-            // - scale = max(scaleX, scaleY) 保证画面完全覆盖
-            // - 计算偏移量居中显示
-            
-            val imageWidth = 640f  // 原始图像宽度
-            val imageHeight = 480f  // 原始图像高度
-            
-            // 竖屏模式：旋转后宽度来自原图高度，高度来自原图宽度
-            val scaleX = canvasWidth / imageHeight   // 旋转后宽度480对应canvasWidth
-            val scaleY = canvasHeight / imageWidth   // 旋转后高度640对应canvasHeight
-            val scale = maxOf(scaleX, scaleY)        // 统一缩放比例
-            
-            // 居中偏移量
-            val offsetX = (canvasWidth - kotlin.math.ceil(imageHeight * scale)) / 2f
-            val offsetY = (canvasHeight - kotlin.math.ceil(imageWidth * scale)) / 2f
-            
-            // 270度旋转 + 前置镜像坐标转换
-            // 原始图像：640x480 (宽x高)，ML Kit boundingBox 基于此坐标系
-            // 旋转270度后：480x640 (宽x高)
-            // 
-            // 270度逆时针旋转：新X = 原始Y，新Y = 原始X
-            // 前置摄像头水平镜像：镜像X = canvasWidth - X
-            // 
-            // 组合变换（镜像+旋转）：
-            // 镜像X = canvasWidth - 原始Y * scale
-            // 镜像Y = 原始X * scale
-            //
-            // 矩形边界转换：
-            // left = canvasWidth - 原始right * scale（原始Y最大 → 镜像X最小）
-            // right = canvasWidth - 原始left * scale（原始Y最小 → 镜像X最大）
-            // top = 原始top * scale（原始X最小）
-            // bottom = 原始bottom * scale（原始X最大）
-            
-            // faceRect 已被 transformToDisplay 转换，直接缩放即可
+            // faceRect 已被 transformToDisplay 转换，直接缩放到 Canvas 尺寸
+            // transformToDisplay 输出坐标系：480x640 (旋转后竖屏尺寸)
             val scaleX = canvasWidth / 480f
             val scaleY = canvasHeight / 640f
             val faceLeft = faceRect!!.left * scaleX
