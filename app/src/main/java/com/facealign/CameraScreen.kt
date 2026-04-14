@@ -288,12 +288,22 @@ private fun transformToDisplay(
     imageHeight: Int,
     rotation: Int
 ): Rect {
+    // 对于前置摄像头 270° 旋转（竖屏拍摄）：
+    // 参考 GraphicOverlay.kt 的 calculateRect 方法：
+    // 1. 旋转映射：left = boundingBox.right（反转），right = boundingBox.left
+    // 2. 前置摄像头镜像：水平翻转 X 坐标
+    //
+    // 简化后的公式（270度 + 前置镜像）：
+    // displayX = imageHeight - imageY（反转 Y）
+    // displayY = imageX
+    //
+    // 即：left = imageHeight - bottom, right = imageHeight - top, top = left, bottom = right
     return when (rotation) {
         270 -> Rect(
-            imageHeight - rect.bottom,  // 前置摄像头镜像
-            rect.left,
-            imageHeight - rect.top,
-            rect.right
+            imageHeight - rect.bottom,  // left = 480 - bottom（Y 反转 + 镜像）
+            rect.left,                  // top = left（X → Y）
+            imageHeight - rect.top,     // right = 480 - top（Y 反转 + 镜像）
+            rect.right                  // bottom = right（X → Y）
         )
         90 -> Rect(
             rect.top,
